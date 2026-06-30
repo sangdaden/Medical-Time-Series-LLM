@@ -34,6 +34,11 @@ SAMPLE_RATE = 360
 # Second modality (wearable-like): number of recent RR intervals per beat.
 RR_CONTEXT = 8
 
+# Modalities the framework uses (registered in src/modalities.py). Add a registered
+# modality name here and the multimodal model/loader pick it up — no core changes.
+# ecg = physiological signal, rr = wearable trend, clinical = patient records.
+MODALITIES = ["ecg", "rr", "clinical"]
+
 # Forecasting: from a window of N beats, predict an abnormal (S/V) beat within the
 # next M beats.
 FORECAST_WINDOW = 10

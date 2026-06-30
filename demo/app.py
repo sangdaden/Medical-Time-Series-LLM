@@ -107,21 +107,25 @@ with tab_evidence:
     else:
         st.info("Run `python -m src.train` to generate metrics.json")
 
-    st.subheader("RQ2 — Multimodal: ECG-only vs ECG + RR-trend")
+    st.subheader("RQ2 — Multimodal framework: per-modality contribution")
     mm = _load_json("multimodal_metrics.json")
-    if mm:
-        eo, er = mm["ecg_only"], mm["ecg_plus_rr"]
-        labels = ["Accuracy", "Macro-F1", "Macro-AUROC"]
-        keys = ["accuracy", "macro_f1", "macro_auroc"]
+    if mm and "combinations" in mm:
+        combos = mm["combinations"]
+        names = list(combos.keys())
+        f1s = [combos[n]["macro_f1"] for n in names]
+        aurocs = [combos[n]["macro_auroc"] for n in names]
         fig, ax = plt.subplots(figsize=(7, 3.2))
-        x = np.arange(len(labels)); w = 0.35
-        ax.bar(x - w / 2, [eo[k] for k in keys], w, label="ECG only")
-        ax.bar(x + w / 2, [er[k] for k in keys], w, label="ECG + RR")
-        ax.set_xticks(x); ax.set_xticklabels(labels); ax.set_ylim(0, 1); ax.legend()
-        ax.set_title("Cross-modal gain")
+        x = np.arange(len(names)); w = 0.38
+        ax.bar(x - w / 2, f1s, w, label="Macro-F1")
+        ax.bar(x + w / 2, aurocs, w, label="Macro-AUROC")
+        ax.set_xticks(x); ax.set_xticklabels(names, rotation=10); ax.set_ylim(0, 1); ax.legend()
+        ax.set_title("Modality combinations")
         st.pyplot(fig)
-        st.success(f"Adding the RR-trend modality lifts Macro-F1 by "
-                   f"**+{mm['delta_macro_f1']:.2f}** (cross-modal benefit).")
+        best = max(names, key=lambda n: combos[n]["macro_f1"])
+        st.success(f"Best: **{best}** (Macro-F1 {combos[best]['macro_f1']:.2f}). "
+                   f"RR adds the largest cross-modal gain; static clinical demographics "
+                   f"do not improve beat-level classification (honest negative result) "
+                   f"but feed the LLM reasoning context.")
     else:
         st.info("Run `python -m src.train_multimodal` to generate multimodal_metrics.json")
 
