@@ -31,4 +31,8 @@ TEST_RECORDS = ["100", "103", "105", "111", "113", "117", "121", "123", "200",
                 "202", "210", "212", "213", "214", "219", "221", "222", "228",
                 "231", "232", "233", "234"]
 
+# LLM reasoning. Provider auto-detected at runtime: OpenAI if OPENAI_API_KEY is
+# set, else Anthropic if ANTHROPIC_API_KEY is set, else a deterministic fallback.
+# Override the choice with the LLM_PROVIDER env var ("openai" | "anthropic").
 CLAUDE_MODEL = "claude-haiku-4-5"
+OPENAI_MODEL = "gpt-4o-mini"
