@@ -6,4 +6,5 @@ matplotlib
 streamlit
 anthropic
 openai
+python-dotenv
 pytest

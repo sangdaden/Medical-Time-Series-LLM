@@ -52,10 +52,21 @@ Requires Python 3.11+ (verified on 3.14).
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-
-# optional — enables real LLM reasoning instead of the template fallback:
-export ANTHROPIC_API_KEY=sk-ant-...
 ```
+
+To enable real LLM reasoning (otherwise a deterministic template fallback is used),
+provide a key either via the shell or a `.env` file at the repo root:
+
+```bash
+# Option A — shell env var (per session):
+export OPENAI_API_KEY=sk-...          # or ANTHROPIC_API_KEY=sk-ant-...
+
+# Option B — .env file (loaded automatically, gitignored):
+cp .env.example .env                  # then edit .env and paste your key
+```
+
+The provider is auto-detected (OpenAI if `OPENAI_API_KEY` is set, else Anthropic).
+Set `LLM_PROVIDER=openai|anthropic` to force one when both keys are present.
 
 ---
 
