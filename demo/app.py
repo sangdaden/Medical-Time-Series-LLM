@@ -1,4 +1,11 @@
 """Streamlit demo: pick/upload an ECG beat + patient info -> AI risk report."""
+import os
+import sys
+
+# Streamlit puts the script's own directory on sys.path, not the repo root,
+# so make the project importable regardless of where streamlit is launched from.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import numpy as np
 import streamlit as st
 import matplotlib.pyplot as plt
