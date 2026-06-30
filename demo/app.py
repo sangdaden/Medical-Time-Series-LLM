@@ -22,9 +22,9 @@ from src.pipeline import analyze
 
 ARTIFACTS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "artifacts")
 
-st.set_page_config(page_title="Time-Series LLM for ECG", layout="centered")
-st.title("Time-Series LLM — ECG Clinical Reasoning (Research Prototype)")
-st.caption("Not a medical device. For research demonstration only.")
+st.set_page_config(page_title="Time-Series LLM for Medical Signals", layout="centered")
+st.title("Time-Series LLM — Multimodal Medical Signal Analysis (Research Prototype)")
+st.caption("Modalities: ECG waveform + heart-rate (RR) trend. Not a medical device — research demo only.")
 
 
 def _load_json(name):

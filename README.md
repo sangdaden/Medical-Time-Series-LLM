@@ -1,9 +1,13 @@
-# Time-Series LLM for ECG — Research Prototype
+# Time-Series LLM for Multimodal Medical Signals — Research Prototype
 
-A prototype framework that adapts Large Language Models (LLMs) for **medical
-time-series analysis and clinical reasoning**. It turns raw ECG beats into
-structured temporal embeddings, classifies arrhythmia, and uses an LLM to produce
-an **explainable** cardiovascular-risk assessment.
+A prototype framework that adapts Large Language Models (LLMs) for **multimodal
+medical time-series analysis and clinical reasoning**. It turns medical signals into
+structured temporal embeddings, **aligns and fuses multiple modalities**, classifies
+arrhythmia, forecasts imminent risk, and uses an LLM to produce an **explainable**
+cardiovascular-risk assessment.
+
+Current modalities are the ECG beat waveform and the RR-interval (heart-rate) trend
+derived from it; the framework is designed to extend to further modalities.
 
 > ⚠️ **Research prototype, not a medical device.** Outputs are for demonstration
 > and research only and must not be used for diagnosis or patient care.
