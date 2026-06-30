@@ -18,31 +18,33 @@ independent clinical-text modality (e.g. MIMIC-IV) is scoped as future work.
 ## Architecture
 
 ```
-ECG beat (MIT-BIH)
-   │
-   └─► TemporalTokenizer (1D-CNN)  ──►  embedding (B×N×768)
-              │                               │
-              │                               └─► t-SNE / PCA  (RQ1 evidence)
-              ├─► mean-pool ─► ClassifierHead ─► N/S/V label + confidence
-              │                               │
-              │                               └─► feature descriptor (class, confidence, HR, rhythm)
-              │                                            │  + patient context (age, history)
-              ▼                                            ▼
-        Projector 768→4096                        Claude API (Haiku 4.5)
-        (RQ2 design stub)                                  │
-                                                           ▼
-                                          risk + step-by-step reasoning  (RQ3)
-                                                           │
-                                                           ▼
-                                          rule-based faithfulness check
+MIT-BIH ECG
+  │
+  ├─ beat waveform (432) ─► TemporalTokenizer (1D-CNN) ─► emb 768 ─► proj ─┐
+  │                                         └─► t-SNE (RQ1)                 │ shared
+  ├─ RR / HR-trend (8)   ─► RREncoder ──────────────────► emb 64  ─► proj ─┤ 128-d ─► fuse ─► N/S/V + confidence   (RQ1, RQ2)
+  │                                                                        ┘                        │
+  │                                                                                                  ▼
+  │                                                            feature descriptor  (+ age, history)
+  │                                                                                                  │
+  │                                                                                                  ▼
+  │                                            LLM (OpenAI / Anthropic) ─► risk + step-by-step reasoning   (RQ3)
+  │                                                                                                  │
+  │                                                                                                  ▼
+  │                                                                              rule-based faithfulness check
+  │
+  └─ RR stream ─► RiskForecaster (GRU) ─► abnormal (S/V) beat within next M beats?   (forecasting)
 ```
 
 - **Classification task:** AAMI 3-class **N / S / V** (Normal, Supraventricular,
   Ventricular ectopic beats), the standard reporting task in the ECG literature.
+- **Modalities:** ECG beat waveform + RR-interval (heart-rate) trend derived from it;
+  each is projected into a shared 128-d space and fused (multimodal alignment).
 - **Split:** de Chazal **DS1/DS2** inter-patient split (no patient appears in both
   train and test).
-- **LLM:** Anthropic Claude API (`claude-haiku-4-5`) with a deterministic
-  template **fallback** so the pipeline runs with no API key.
+- **LLM:** OpenAI or Anthropic, auto-detected from the API key (default
+  `gpt-4o-mini` / `claude-haiku-4-5`), with a deterministic template **fallback** so
+  the pipeline runs with no key.
 
 ---
 
@@ -94,9 +96,12 @@ python -m src.forecast
 # 5. Run the test suite
 pytest -v          # 22 tests
 
-# 6. Launch the interactive demo
+# 6. Launch the interactive demo (two tabs: Live Analysis + Research Evidence)
 streamlit run demo/app.py
 ```
+
+The demo's **Research Evidence** tab reads the JSON/figures in `artifacts/`, so run
+steps 1–4 first to populate it.
 
 ---
 
