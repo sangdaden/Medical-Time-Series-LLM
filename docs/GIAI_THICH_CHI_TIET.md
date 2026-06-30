@@ -181,12 +181,49 @@ nhồi embedding thật sự cần một LLM *mã nguồn mở* nhỏ + huấn l
 — là hướng nghiên cứu tương lai.
 
 **Projector (lớp chiếu):** `src/models/projector.py` chiếu embedding 768 → 4096 chiều,
-được cài sẵn và test nhưng *chưa* huấn luyện end-to-end. Nó là nền cho RQ2 (gióng đa
-modality) trong tương lai.
+hướng tới việc nhồi embedding vào không gian token của LLM (future work). RQ2 (gióng đa
+modality) đã được hiện thực hóa thật bằng *framework đa modality* mô tả ở Phần E.
 
 ---
 
-## Phần E — Bảng tra cứu thuật ngữ & viết tắt
+## Phần E — Framework đa modality & forecasting (vì sao đây là "a framework")
+
+Mô tả đề tài nói "develop ... **a new framework**". Điểm mấu chốt: dự án không phải một
+pipeline cứng, mà là một **framework mở rộng được**.
+
+**Khái niệm "modality" (phương thức dữ liệu):** mỗi modality = (1) bộ *trích đặc trưng
+theo từng beat* + (2) một *encoder* biến đặc trưng đó thành embedding. Mỗi modality được
+**đăng ký (register)** vào một *registry* (sổ đăng ký). Bộ nạp dữ liệu và mô hình chỉ
+việc duyệt registry — nên **thêm một modality mới chỉ ~10 dòng, không sửa code lõi**.
+- **Registry:** danh sách trung tâm ánh xạ tên modality → cách trích đặc trưng + encoder.
+- File: `src/framework.py` (lõi registry), `src/modalities.py` (các modality cụ thể).
+
+**3 modality thật, đúng 3 nhóm trong mô tả:**
+| Nhóm trong mô tả | Tên | Dữ liệu |
+|---|---|---|
+| physiological signal (tín hiệu sinh lý) | `ecg` | sóng ECG (1D-CNN) |
+| wearable sensor data (thiết bị đeo) | `rr` | chuỗi RR/nhịp tim trích từ ECG |
+| clinical records (hồ sơ lâm sàng) | `clinical` | tuổi, giới, số thuốc (đọc thật từ header MIT-BIH) |
+
+**Multimodal alignment (gióng đa modality):** mỗi modality được *chiếu (project)* về một
+không gian chung 128 chiều, rồi *fuse (hợp nhất)* để phân loại. Mô hình tổng quát cho
+**N modality** bất kỳ trong danh sách `config.MODALITIES`.
+
+**Cross-modal (liên modality):** framework cho phép *đo* đóng góp từng modality. Kết quả
+(macro-F1): `ecg` 0.50 → `ecg+rr` 0.67 (+0.17, lợi ích cross-modal rõ) → `ecg+rr+clinical`
+0.60 (clinical *không* giúp phân loại beat — kết quả âm trung thực, vì feature tĩnh theo
+bệnh nhân; nó hữu ích ở tầng reasoning của LLM).
+
+**Forecasting (dự báo):** ngoài phân loại, một mô hình **GRU** (*Gated Recurrent Unit* —
+mạng hồi tiếp xử lý chuỗi) nhận 10 khoảng RR gần nhất để dự báo *có beat bất thường (S/V)
+trong 5 beat kế tiếp không* (AUROC ~0.85). File: `src/forecast.py`.
+
+**Cách thêm modality mới (điểm mở rộng):** viết `prepare` + `beat_feature` + chọn
+encoder, gọi `register(ModalitySpec(...))`, thêm tên vào `config.MODALITIES` — xong.
+
+---
+
+## Phần F — Bảng tra cứu thuật ngữ & viết tắt
 
 | Viết tắt / Thuật ngữ | Nghĩa đầy đủ | Giải thích ngắn |
 |---|---|---|
@@ -237,3 +274,11 @@ modality) trong tương lai.
 | t-SNE / PCA | — | Kỹ thuật giảm chiều để vẽ embedding |
 | MPS | Metal Performance Shaders | Tăng tốc GPU của Apple (máy Mac) |
 | RQ | Research Question | Câu hỏi nghiên cứu (RQ1/2/3) |
+| Framework | Khung mở rộng | Hệ thống có điểm mở rộng rõ ràng (đăng ký là dùng được), không phải script cứng |
+| Registry | Sổ đăng ký | Danh sách trung tâm ánh xạ tên modality → cách trích đặc trưng + encoder |
+| Modality | Phương thức dữ liệu | Một nguồn dữ liệu (ECG / RR / clinical) + cách mã hoá nó |
+| ModalitySpec | — | Khai báo 1 modality (tên, trích đặc trưng, encoder) để đăng ký |
+| Fusion | Hợp nhất | Ghép embedding nhiều modality (concat) trước khi phân loại |
+| Projection | Phép chiếu | Đưa embedding các modality về cùng một chiều (128) để gióng |
+| Cross-modal | Liên modality | Mẫu hình học được nhờ *kết hợp* nhiều modality |
+| GRU | Gated Recurrent Unit | Mạng hồi tiếp xử lý chuỗi, dùng cho forecasting |

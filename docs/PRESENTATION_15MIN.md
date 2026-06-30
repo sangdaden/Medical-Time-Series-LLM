@@ -1,9 +1,14 @@
 # Kịch bản trình bày 15 phút — Time-Series LLM for Medical Data (v2)
 
 **Mục tiêu:** Thuyết phục giảng viên rằng bạn *thực sự* muốn tham gia nghiên cứu — bằng
-cách cho thấy bạn (1) hiểu bài toán, (2) đã tự xây prototype chạy được *chạm đúng các
-từ khóa của đề tài* (multimodal, cross-modal, forecasting, clinical reasoning), và (3)
-tư duy như người làm nghiên cứu (trung thực với hạn chế, có hướng đi tiếp).
+cách cho thấy bạn (1) hiểu bài toán, (2) đã tự xây một ***framework** mở rộng được* chạm
+đúng các từ khóa của đề tài (**a new framework**, multimodal, cross-modal, clinical
+reasoning, forecasting), và (3) tư duy như người làm nghiên cứu (trung thực với hạn
+chế, có hướng đi tiếp).
+
+> **Câu một dòng để mở đầu/khẳng định:** "Em xây một *framework* adapt LLM cho dữ liệu
+> y tế đa modality — đăng ký modality là dùng được, hiện có 3 nhóm (sinh lý / thiết bị
+> đeo / hồ sơ lâm sàng) — kèm reasoning có giải thích và dự báo rủi ro."
 
 **Chuẩn bị trước buổi gặp (~10 phút trước):**
 ```bash
@@ -60,20 +65,24 @@ streamlit run demo/app.py       # http://localhost:8501  (mở tab riêng)
 
 ---
 
-## Phần 3 — Kiến trúc (3:30–5:30)
+## Phần 3 — Kiến trúc: đây là một *framework* (3:30–5:30)
 
-**Chỉ sơ đồ Architecture + mục Repository layout trong README.**
-> "Luồng gồm:
-> 1. **Temporal Tokenizer (1D-CNN):** beat ECG → embedding 768 chiều.
-> 2. **Modality thứ hai — RR/HR-trend:** em trích chuỗi khoảng RR (nhịp tim theo thời
->    gian) ngay từ ECG — đúng loại dữ liệu *thiết bị đeo* báo cáo. Đây là dữ liệu
->    **thật**, không bịa.
-> 3. **Multimodal alignment:** mỗi modality được *chiếu về không gian chung 128 chiều*
->    rồi *fuse* — đây chính là phần alignment của RQ2.
-> 4. **Classifier** phân loại nhịp N/S/V.
-> 5. **LLM (OpenAI/Claude)** đọc mô tả + bối cảnh bệnh nhân → *risk + lý giải từng
->    bước*, kèm **faithfulness check** chống 'bịa'.
-> 6. **Forecaster (GRU):** từ nhịp gần đây → dự báo beat bất thường sắp tới."
+**Mở đầu — nhấn mạnh đây là framework, không phải script một lần:**
+> "Điểm cốt lõi em muốn nhấn: em không xây một pipeline cứng, mà một **framework mở
+> rộng được**. Mỗi *modality* = một bộ trích đặc trưng + một encoder, được **đăng ký**
+> vào một registry; loader và mô hình tự động dùng nó. **Thêm modality mới chỉ ~10
+> dòng, không sửa code lõi.** Đây đúng là tinh thần 'a new framework' trong đề tài."
+
+**Chỉ sơ đồ Architecture + mục *Extending the framework* trong README.**
+> "Hiện framework đăng ký sẵn **3 modality thật — đúng 3 nhóm trong mô tả đề tài**:
+> 1. **physiological — `ecg`:** Temporal Tokenizer (1D-CNN) → embedding 768 chiều.
+> 2. **wearable — `rr`:** chuỗi khoảng RR (nhịp tim theo thời gian) trích *thật* từ ECG.
+> 3. **clinical records — `clinical`:** tuổi/giới/số thuốc đọc *thật* từ header MIT-BIH.
+>
+> **Multimodal alignment:** mỗi modality được *chiếu về không gian chung 128 chiều* rồi
+> *fuse* — phần alignment của RQ2; mô hình tổng quát cho **N modality** bất kỳ.
+> Sau đó: **Classifier** (N/S/V) → **LLM (OpenAI/Claude)** sinh *risk + lý giải* kèm
+> **faithfulness check** → và một **Forecaster (GRU)** dự báo beat bất thường sắp tới."
 
 **Điểm học thuật cần nói rõ (text-bridge):**
 > "LLM qua API là closed-weights nên không thể nhồi embedding trực tiếp vào nó. Em
@@ -116,22 +125,27 @@ thiết kế để buổi demo không bao giờ chết."*
 
 ---
 
-## Phần 6 — Multimodal: cross-modal có lợi (9:30–11:00) ⭐
+## Phần 6 — Framework đo đóng góp từng modality (9:30–11:00) ⭐
 
-**Đây là điểm mạnh nhất — chạm đúng từ khóa 'multimodal / cross-modal' của đề tài.**
+**Đây là điểm mạnh nhất — chạm đúng 'multimodal / cross-modal' VÀ chứng minh đây là framework.**
 **Mở README → bảng Multimodal (hoặc artifacts/multimodal_metrics.json).**
-> "Để trả lời RQ2, em huấn luyện *cùng một backbone, cùng dữ liệu*, chỉ khác là có
-> thêm modality RR-trend hay không:
+> "Vì là framework, em *đo được* đóng góp từng modality: huấn luyện cùng dữ liệu cho
+> từng tổ hợp tích lũy:
 >
-> | Cấu hình | Macro-F1 | AUROC |
+> | Tổ hợp | Macro-F1 | AUROC |
 > |---|---|---|
-> | ECG-only | 0.45 | 0.87 |
-> | **ECG + RR** | **0.74** | **0.95** |
+> | ecg | 0.50 | 0.87 |
+> | **ecg + rr** | **0.67** | **0.95** |
+> | ecg + rr + clinical | 0.60 | 0.94 |
 >
-> Thêm modality nhịp tim làm **macro-F1 tăng 0.29**. Lý do hợp lý lâm sàng: RR mang
-> thông tin *thời điểm* (beat đến sớm = RR ngắn) mà một beat đơn lẻ không có. Hai
-> modality *bổ sung* cho nhau — đây là bằng chứng **cross-modal** thật sự, không phải
-> nói suông."
+> Hai điều đáng nói:
+> 1. **RR cho lợi ích cross-modal lớn (+0.17 macro-F1)** — RR mang thông tin *thời
+>    điểm* (beat sớm = RR ngắn) mà một beat đơn lẻ không có. Đây là bằng chứng
+>    cross-modal thật sự.
+> 2. **Clinical (tuổi/giới/thuốc) *không* cải thiện phân loại beat** — em báo cáo
+>    trung thực kết quả âm này: feature tĩnh theo bệnh nhân nên không phân biệt beat;
+>    nó hữu ích hơn ở tầng *reasoning của LLM*. Việc *đo được* điều này chính là giá
+>    trị của framework — và cho thấy em đánh giá khách quan, không tô hồng."
 
 ---
 
@@ -185,8 +199,10 @@ thiết kế để buổi demo không bao giờ chết."*
 
 | Câu hỏi | Hướng trả lời |
 |---|---|
-| "Multimodal của em có thật không hay ghép cho có?" | Thật: cùng backbone/dữ liệu, chỉ thêm RR-trend → macro-F1 tăng 0.29. RR là dữ liệu trích thật từ ECG, đúng dạng thiết bị đeo. |
-| "Vì sao ECG+RR tốt hơn nhiều?" | RR mang thông tin *thời điểm* (beat sớm = RR ngắn) mà 1 beat waveform không có; đặc biệt giúp lớp S (vốn về timing). |
+| "Sao gọi là *framework*, khác gì một script?" | Có lớp trừu tượng `ModalitySpec` + registry: mỗi modality = bộ trích đặc trưng + encoder, *đăng ký* là loader và mô hình tự dùng. Thêm modality mới ~10 dòng, không sửa code lõi. Mô hình tổng quát cho N modality. README có ví dụ thêm modality `spo2`. |
+| "Multimodal của em có thật không hay ghép cho có?" | Thật: cùng dữ liệu, thêm RR-trend → macro-F1 +0.17. RR trích thật từ ECG; clinical (tuổi/giới/thuốc) đọc thật từ header MIT-BIH. |
+| "Sao thêm clinical lại không cải thiện?" | Trung thực: feature tĩnh theo bệnh nhân nên không phân biệt beat → không giúp phân loại beat (thậm chí giảm nhẹ). Nó hữu ích ở tầng reasoning LLM. Framework cho phép *đo* được điều này. |
+| "Vì sao ECG+RR tốt hơn?" | RR mang thông tin *thời điểm* (beat sớm = RR ngắn) mà 1 beat waveform không có; đặc biệt giúp lớp S (vốn về timing). |
 | "Forecasting có bị rò rỉ nhãn không?" | Không — đầu vào chỉ là RR của các beat *quá khứ*; nhãn là sự kiện *tương lai*. Đánh giá trên split inter-patient. |
 | "Macro-F1 0.53 (đơn modality) thấp?" | Lớp S khó (ít mẫu, hình thái tinh tế); nhưng AUROC 0.91 cho thấy phân tách tốt. Và multimodal nâng F1 lên 0.74. |
 | "Sao chưa dùng MIMIC / clinical notes?" | Cần credentialing, ngoài phạm vi prototype ngắn; là hướng nghiên cứu chính tiếp theo. |
