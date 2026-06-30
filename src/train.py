@@ -22,13 +22,19 @@ def get_device():
     return torch.device("cpu")
 
 
-def train(epochs: int = 5, batch_size: int = 256, lr: float = 1e-3, max_beats: int = 600):
+def train(epochs: int = 8, batch_size: int = 256, lr: float = 1e-3, per_class: int = 2000):
     os.makedirs(ARTIFACTS, exist_ok=True)
     device = get_device()
     print("device:", device)
 
-    X_tr, y_tr, X_te, y_te = loader.load_dataset(max_beats_per_record=max_beats)
+    # Train on a class-balanced subset (undersample the dominant Normal class);
+    # evaluate on the full, naturally-imbalanced test split.
+    X_tr, y_tr = loader.load_split(config.TRAIN_RECORDS, max_beats_per_record=None)
+    X_tr, y_tr = loader.balance_classes(X_tr, y_tr, per_class=per_class, seed=0)
+    X_te, y_te = loader.load_split(config.TEST_RECORDS, max_beats_per_record=None)
     print("train/test beats:", len(y_tr), len(y_te))
+    print("train class counts:", np.bincount(y_tr, minlength=len(config.CLASSES)).tolist())
+    print("test class counts:", np.bincount(y_te, minlength=len(config.CLASSES)).tolist())
 
     Xtr = torch.tensor(X_tr); ytr = torch.tensor(y_tr)
     Xte = torch.tensor(X_te).to(device); yte_np = y_te

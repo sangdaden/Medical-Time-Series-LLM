@@ -5,6 +5,7 @@ import wfdb
 from src import config
 
 DB_DIR = "mitdb"
+LOCAL_DIR = "mitdb"
 
 
 def map_symbol(symbol: str):
@@ -31,13 +32,36 @@ def segment_beats(signal: np.ndarray, rpeaks, symbols):
 
 
 def _load_record(record: str):
-    """Download (if needed) and read one record's first channel + annotations."""
-    rec = wfdb.rdrecord(record, pn_dir="mitdb")
-    ann = wfdb.rdann(record, "atr", pn_dir="mitdb")
+    """Read one record's first channel + annotations.
+
+    Uses the local cache in ``LOCAL_DIR`` if the record is present there
+    (fast, offline); otherwise streams it from PhysioNet.
+    """
+    local = os.path.join(LOCAL_DIR, record)
+    if os.path.exists(local + ".dat"):
+        rec = wfdb.rdrecord(local)
+        ann = wfdb.rdann(local, "atr")
+    else:
+        rec = wfdb.rdrecord(record, pn_dir="mitdb")
+        ann = wfdb.rdann(record, "atr", pn_dir="mitdb")
     signal = rec.p_signal[:, 0].astype(np.float32)
     # per-record z-normalization
     signal = (signal - signal.mean()) / (signal.std() + 1e-8)
     return signal, list(ann.sample), list(ann.symbol)
+
+
+def balance_classes(X: np.ndarray, y: np.ndarray, per_class: int, seed: int = 0):
+    """Cap each class to at most ``per_class`` samples (random undersampling)."""
+    rng = np.random.default_rng(seed)
+    chosen = []
+    for c in range(len(config.CLASSES)):
+        ci = np.where(y == c)[0]
+        if len(ci) > per_class:
+            ci = rng.choice(ci, per_class, replace=False)
+        chosen.append(ci)
+    idx = np.concatenate(chosen) if chosen else np.array([], dtype=int)
+    rng.shuffle(idx)
+    return X[idx], y[idx]
 
 
 def load_split(records, max_beats_per_record: int | None = None):
