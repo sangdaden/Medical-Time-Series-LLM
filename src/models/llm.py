@@ -57,12 +57,12 @@ class LLMReasoner:
         )
         text = msg.content[0].text.strip()
         if text.startswith("```"):
-            text = text.strip("`").lstrip("json").strip()
+            text = text.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
         return json.loads(text)
 
     def _explain_fallback(self, descriptor: str, patient_info: dict) -> dict:
         """Deterministic rule-based reasoning so the pipeline runs without an API key."""
-        abnormal = any(k in descriptor for k in ["Ventricular", "Supraventricular", "Fusion"])
+        abnormal = any(k in descriptor for k in ["Ventricular", "Supraventricular"])
         history = str(patient_info.get("history", "")).lower()
         risky_history = any(h in history for h in ["hypertension", "cardiac", "infarct", "diabetes"])
         reasons = []

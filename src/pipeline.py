@@ -37,7 +37,10 @@ class Pipeline:
         self.reasoner = LLMReasoner()
 
     def analyze(self, ecg: np.ndarray, patient_info: dict) -> dict:
-        x = torch.tensor(np.asarray(ecg, dtype="float32")).unsqueeze(0).to(self.device)
+        ecg = np.asarray(ecg, dtype="float32")
+        if ecg.shape[-1] != config.WINDOW:
+            raise ValueError(f"ecg window must be length {config.WINDOW}, got {ecg.shape[-1]}")
+        x = torch.tensor(ecg).unsqueeze(0).to(self.device)
         with torch.no_grad():
             logits = self.head(self.backbone.pooled(x))
             probs = torch.softmax(logits, dim=1)[0].cpu().numpy()
