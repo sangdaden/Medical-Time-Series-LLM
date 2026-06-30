@@ -35,7 +35,12 @@ def _rr_beat(ctx, j, r):
 
 # --- Clinical records ---------------------------------------------------------
 def parse_clinical(comments) -> np.ndarray:
-    """Parse [age/100, sex(M=1/F=0/unknown=0.5), n_meds/5] from MIT-BIH header comments."""
+    """Parse [age/100, sex(M=1/F=0/unknown=0.5), n_meds/5] from MIT-BIH header comments.
+
+    The medication count uses a simple heuristic (a short comma-separated, period-free
+    line); narrative notes are treated as 0 medications. Good enough for a coarse
+    clinical-context feature, not a clinical parser.
+    """
     age, sex, n_meds = 60.0, 0.5, 0.0
     if comments:
         toks = comments[0].split()
@@ -57,7 +62,7 @@ def _clinical_prepare(signal, rpeaks, symbols, header):
 
 
 def _clinical_beat(ctx, j, r):
-    return ctx                                       # static per record
+    return ctx.copy()                                # static per record; copy to be safe
 
 
 register(ModalitySpec("ecg", config.WINDOW, _ecg_prepare, _ecg_beat, lambda: EcgEncoder()))
