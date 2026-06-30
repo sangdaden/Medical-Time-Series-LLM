@@ -6,8 +6,16 @@ structured temporal embeddings, **aligns and fuses multiple modalities**, classi
 arrhythmia, forecasts imminent risk, and uses an LLM to produce an **explainable**
 cardiovascular-risk assessment.
 
-Current modalities are the ECG beat waveform and the RR-interval (heart-rate) trend
-derived from it; the framework is designed to extend to further modalities.
+It is built as an **extensible modality framework**: a modality (a per-beat feature
+extractor + an encoder) is *registered* and automatically plugs into the data loader
+and the multimodal model — adding one needs no change to core code. Three real
+modalities, matching the project description, ship registered:
+
+| Description's category | Modality here | Source |
+|---|---|---|
+| physiological signal | `ecg` — beat waveform | MIT-BIH signal |
+| wearable sensor data | `rr` — RR-interval / heart-rate trend | derived from ECG |
+| clinical records | `clinical` — age, sex, medication count | MIT-BIH header comments |
 
 > ⚠️ **Research prototype, not a medical device.** Outputs are for demonstration
 > and research only and must not be used for diagnosis or patient care.
@@ -22,28 +30,27 @@ independent clinical-text modality (e.g. MIMIC-IV) is scoped as future work.
 ## Architecture
 
 ```
-MIT-BIH ECG
-  │
-  ├─ beat waveform (432) ─► TemporalTokenizer (1D-CNN) ─► emb 768 ─► proj ─┐
-  │                                         └─► t-SNE (RQ1)                 │ shared
-  ├─ RR / HR-trend (8)   ─► RREncoder ──────────────────► emb 64  ─► proj ─┤ 128-d ─► fuse ─► N/S/V + confidence   (RQ1, RQ2)
-  │                                                                        ┘                        │
-  │                                                                                                  ▼
-  │                                                            feature descriptor  (+ age, history)
-  │                                                                                                  │
-  │                                                                                                  ▼
-  │                                            LLM (OpenAI / Anthropic) ─► risk + step-by-step reasoning   (RQ3)
-  │                                                                                                  │
-  │                                                                                                  ▼
-  │                                                                              rule-based faithfulness check
+MIT-BIH record
+  │  (registered modalities — see src/modalities.py)
+  ├─ ecg: beat waveform (432) ─► EcgEncoder (1D-CNN) ─► 768 ─► proj ─┐
+  │                                       └─► t-SNE (RQ1)            │ shared
+  ├─ rr: RR / HR-trend (8)     ─► VectorEncoder ─────────► 64  ─► proj ─┤ 128-d ─► fuse ─► N/S/V   (RQ1, RQ2)
+  ├─ clinical: age/sex/meds (3)─► VectorEncoder ─────────► 32  ─► proj ─┘                  │
+  │                                                                                         ▼
+  │                                                       feature descriptor (+ patient context)
+  │                                                                                         │
+  │                                       LLM (OpenAI / Anthropic) ─► risk + step-by-step reasoning   (RQ3)
+  │                                                                                         │
+  │                                                                                         ▼
+  │                                                                     rule-based faithfulness check
   │
   └─ RR stream ─► RiskForecaster (GRU) ─► abnormal (S/V) beat within next M beats?   (forecasting)
 ```
 
 - **Classification task:** AAMI 3-class **N / S / V** (Normal, Supraventricular,
   Ventricular ectopic beats), the standard reporting task in the ECG literature.
-- **Modalities:** ECG beat waveform + RR-interval (heart-rate) trend derived from it;
-  each is projected into a shared 128-d space and fused (multimodal alignment).
+- **Multimodal alignment:** each registered modality is encoded and projected into a
+  shared 128-d space, then fused; the model is generic over any 1..N modalities.
 - **Split:** de Chazal **DS1/DS2** inter-patient split (no patient appears in both
   train and test).
 - **LLM:** OpenAI or Anthropic, auto-detected from the API key (default
@@ -98,7 +105,7 @@ python -m src.forecast
 #    -> artifacts/forecast_metrics.json
 
 # 5. Run the test suite
-pytest -v          # 22 tests
+pytest -v          # 27 tests
 
 # 6. Launch the interactive demo (two tabs: Live Analysis + Research Evidence)
 streamlit run demo/app.py
@@ -128,20 +135,24 @@ Accuracy is *lower* than a naive always-predict-N classifier (which would score
 model to actually detect the rare S and V beats, which is what makes Macro-F1 and
 AUROC meaningful. AUROC 0.91 shows the embeddings are strongly class-discriminative.
 
-### Multimodal: cross-modal benefit (RQ2)
+### Multimodal: per-modality contribution (RQ2)
 
-A second, wearable-like modality — the **RR-interval (heart-rate) trend** derived from
-the ECG — is encoded and **aligned with the ECG embedding in a shared space**, then
-fused (`src/train_multimodal.py`). Same backbone and data; only the RR modality differs:
+The framework trains each cumulative modality combination on the same data
+(`src/train_multimodal.py`), so we can *measure* what each modality contributes:
 
-| Configuration | Accuracy | Macro-F1 | Macro-AUROC |
-|---|---|---|---|
-| ECG only | 0.642 | 0.446 | 0.866 |
-| **ECG + RR** | **0.910** | **0.737** | **0.952** |
+| Modalities | Macro-F1 | Macro-AUROC |
+|---|---|---|
+| `ecg` | 0.50 | 0.865 |
+| **`ecg + rr`** | **0.67** | **0.946** |
+| `ecg + rr + clinical` | 0.60 | 0.942 |
 
-Adding the RR modality lifts Macro-F1 by **+0.29**. The RR trend carries beat-timing
-information (premature beats shorten RR) that a single waveform window lacks, so the
-two modalities are genuinely complementary — direct evidence of cross-modal learning.
+The **RR trend gives a large cross-modal gain (+0.17 Macro-F1)** — it carries
+beat-timing information (premature beats shorten RR) that a single waveform window
+lacks. The **clinical-records modality (age/sex/medications) does *not* improve
+beat-level classification** — an honest negative result: those features are constant
+within a patient and so cannot discriminate beats, though they remain valuable as
+context for the LLM reasoning layer. Being able to quantify this per modality is
+exactly what the framework is for. (Numbers vary slightly run-to-run.)
 
 ### Forecasting: imminent abnormal beat (`src/forecast.py`)
 
@@ -169,13 +180,15 @@ distinct from the normal (N) bulk. The temporal tokens therefore encode
 clinically meaningful structure that a downstream reasoner can consume.
 
 **RQ2 — How can multimodal medical data be aligned into a unified representation?**
-Demonstrated on two real modalities. The ECG waveform and the RR-interval (heart-rate)
-trend are each encoded, **projected into a shared 128-d space, and fused**
-(`src/models/multimodal.py`, `src/train_multimodal.py`). The aligned multimodal model
-beats the ECG-only baseline by +0.29 Macro-F1, showing the shared representation
-captures complementary cross-modal information. The same projection design extends to
-further modalities (clinical text/notes) — that extension, and embedding injection into
-an open-weights LLM, remain future work.
+Demonstrated by an **extensible modality framework** (`src/framework.py`,
+`src/modalities.py`). Three real modalities — physiological (ECG), wearable (RR trend),
+and clinical records (header demographics/medications) — are each encoded and
+**projected into a shared 128-d space, then fused** (`src/models/multimodal.py`). The
+aligned ECG+RR model beats ECG-only by +0.17 Macro-F1, showing the shared
+representation captures complementary cross-modal information. Adding a new modality
+requires only registering it (no core changes). Embedding injection into an
+open-weights LLM, and a free-text clinical-notes modality (e.g. MIMIC-IV), remain
+future work.
 
 **RQ3 — Can LLM reasoning improve interpretability of time-series prediction?**
 Yes. Rather than emitting a bare label, the pipeline converts model outputs into a
@@ -190,23 +203,42 @@ ungrounded explanations.
 
 | Claim in the project description | Status | Where |
 |---|---|---|
+| A **new framework** adapting LLMs | ✅ Extensible modality registry | `framework.py`, `modalities.py` |
 | Adapt LLMs for medical time-series | ✅ Done | `pipeline.py` |
 | Effective **temporal tokenization** | ✅ Done | `TemporalTokenizer`, AUROC 0.91 + t-SNE |
-| **Multimodal** data | ✅ Two modalities (ECG + RR trend) | `train_multimodal.py` |
-| **Multimodal alignment** | ✅ Shared-space projection + fusion | `models/multimodal.py` |
-| Learn **cross-modal patterns** | ✅ +0.29 Macro-F1 from fusion | `multimodal_metrics.json` |
+| **Multimodal** data (3 categories) | ✅ physiological + wearable + clinical | `modalities.py` |
+| **Multimodal alignment** | ✅ Shared-space projection + fusion (N modalities) | `models/multimodal.py` |
+| Learn **cross-modal patterns** | ✅ +0.17 Macro-F1 from ECG+RR fusion | `multimodal_metrics.json` |
+| Physiological signals | ✅ ECG waveform | `modalities.py` (`ecg`) |
+| Wearable sensor data | ✅ RR / heart-rate trend | `modalities.py` (`rr`) |
+| Clinical records | ✅ demographics + medications (MIT-BIH headers) | `modalities.py` (`clinical`) |
 | **Interpretable predictions** | ✅ Done | LLM reasoning + faithfulness check |
 | **Clinical reasoning** module | ✅ Done | `models/llm.py` |
 | **Risk forecasting** | ✅ Short-horizon (AUROC 0.85) | `forecast.py` |
 | Early disease detection | ⚠️ Proxy (arrhythmia detection) | classification + forecasting |
-| **Clinical records / notes** modality | ❌ Future work | needs MIMIC-IV (credentialed) |
+| Free-text clinical **notes** modality | ❌ Future work | needs MIMIC-IV (credentialed) |
 | Embedding injection into LLM | ❌ Future work | uses text-bridge instead |
 | General-purpose smart-health agent | ⚠️ Foundation only | prototype groundwork |
 
-This is an honest **proof-of-concept**: the core ideas (tokenization, multimodal
-alignment, cross-modal gain, clinical reasoning, forecasting) are demonstrated on real
-ECG-derived data; the remaining items (independent text modality, embedding injection,
+This is an honest **proof-of-concept framework**: the core ideas (an extensible
+modality framework, temporal tokenization, multimodal alignment across all three
+description categories, cross-modal gain, clinical reasoning, forecasting) are
+demonstrated on real data; the remaining items (free-text notes, embedding injection,
 full agent) are scoped as future work.
+
+### Extending the framework
+
+To add a modality, register it in `src/modalities.py` and list its name in
+`config.MODALITIES` — no other code changes:
+
+```python
+register(ModalitySpec(
+    name="spo2", feat_dim=K,
+    prepare=_spo2_prepare,          # (signal, rpeaks, symbols, header) -> ctx
+    beat_feature=_spo2_beat,        # (ctx, j, r) -> np.ndarray[K]
+    make_encoder=lambda: VectorEncoder(K, 32),
+))
+```
 
 ---
 
@@ -214,16 +246,18 @@ full agent) are scoped as future work.
 
 ```
 src/
-  config.py                 # classes, window, split, model name
-  data/loader.py            # MIT-BIH download/cache, beat segmentation, AAMI map, balancing
+  config.py                 # classes, window, split, MODALITIES, model names
+  framework.py              # ModalitySpec + registry (the extensible core)
+  modalities.py             # ecg / rr / clinical modalities, registered
+  data/loader.py            # MIT-BIH cache, segmentation, AAMI map, balancing, load_multimodal
   models/temporal_encoder.py# TemporalTokenizer (1D-CNN) + ClassifierHead
-  models/rr_encoder.py      # RREncoder for the RR-interval (heart-rate) modality
-  models/multimodal.py      # MultimodalClassifier: align + fuse ECG and RR (RQ2)
+  models/modality_encoders.py# EcgEncoder + VectorEncoder (per-modality encoders)
+  models/multimodal.py      # MultimodalModel: align + fuse any 1..N modalities (RQ2)
   models/projector.py       # 768->4096 projection (LLM-space design stub)
   models/llm.py             # OpenAI/Anthropic client + template fallback
   features.py               # descriptor builder + faithfulness check
   train.py                  # ECG classification: metrics, confusion matrix, checkpoint
-  train_multimodal.py       # ECG-only vs ECG+RR cross-modal comparison
+  train_multimodal.py       # per-modality-combination comparison (ecg / +rr / +clinical)
   forecast.py               # RR-trend GRU forecaster for imminent abnormal beats
   embed_viz.py              # embedding extraction + t-SNE
   pipeline.py               # analyze(ecg, patient_info) end-to-end

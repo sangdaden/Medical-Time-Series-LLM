@@ -88,13 +88,32 @@ def _rr_series(rpeaks: np.ndarray) -> np.ndarray:
     return np.where(np.isfinite(rr), rr, med).astype(np.float32)
 
 
-def load_split_multimodal(records, k: int = config.RR_CONTEXT):
-    """Per-beat ECG window + RR-trend context. Returns (ecg N×WINDOW, rr N×k, y N)."""
-    Xs, Rs, ys = [], [], []
+def _load_comments(record: str):
+    """Header comment lines (age/sex/medications/notes) for one record, local or remote."""
+    local = os.path.join(LOCAL_DIR, record)
+    if os.path.exists(local + ".hea"):
+        return wfdb.rdheader(local).comments
+    return wfdb.rdheader(record, pn_dir="mitdb").comments
+
+
+def load_multimodal(records, modalities=None):
+    """Generic multimodal loader: returns ({modality_name: N×feat_dim}, y N).
+
+    Each modality's per-beat features come from its registered spec, so adding a
+    modality requires no change here.
+    """
+    from src import framework
+    import src.modalities  # noqa: F401  (populates the registry)
+    if modalities is None:
+        modalities = config.MODALITIES
+    specs = framework.get_specs(modalities)
+    feats = {s.name: [] for s in specs}
+    ys = []
     for record in records:
         signal, rpeaks, symbols = _load_record(record)
         rpeaks = np.asarray(rpeaks)
-        rr = _rr_series(rpeaks)
+        header = {"comments": _load_comments(record)}
+        ctxs = {s.name: s.prepare(signal, rpeaks, symbols, header) for s in specs}
         for j, (r, sym) in enumerate(zip(rpeaks, symbols)):
             cls = map_symbol(sym)
             if cls is None:
@@ -102,12 +121,11 @@ def load_split_multimodal(records, k: int = config.RR_CONTEXT):
             start, end = r - config.PRE_SAMPLES, r + config.POST_SAMPLES
             if start < 0 or end > len(signal):
                 continue
-            Xs.append(signal[start:end])
-            Rs.append(_rr_window(rr, j, k))
+            for s in specs:
+                feats[s.name].append(s.beat_feature(ctxs[s.name], j, r))
             ys.append(cls)
-    return (np.asarray(Xs, dtype=np.float32),
-            np.asarray(Rs, dtype=np.float32),
-            np.asarray(ys, dtype=np.int64))
+    out = {name: np.asarray(v, dtype=np.float32) for name, v in feats.items()}
+    return out, np.asarray(ys, dtype=np.int64)
 
 
 def load_split(records, max_beats_per_record: int | None = None):
