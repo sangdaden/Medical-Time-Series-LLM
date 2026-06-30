@@ -1,7 +1,8 @@
 # Giải thích chi tiết cách làm + Bảng thuật ngữ
 
-Tài liệu này mô tả chi tiết toàn bộ cách làm của dự án **Time-Series LLM for ECG**,
-giải thích từng bước "làm như thế nào" và giải nghĩa mọi từ viết tắt / thuật ngữ.
+Tài liệu này mô tả chi tiết toàn bộ cách làm của dự án **Time-Series LLM for
+Multimodal Medical Signals** (modality hiện có: ECG + RR/HR-trend), giải thích từng
+bước "làm như thế nào" và giải nghĩa mọi từ viết tắt / thuật ngữ.
 
 ---
 
