@@ -31,6 +31,14 @@ AAMI_MAP = {
 
 SAMPLE_RATE = 360
 
+# Second modality (wearable-like): number of recent RR intervals per beat.
+RR_CONTEXT = 8
+
+# Forecasting: from a window of N beats, predict an abnormal (S/V) beat within the
+# next M beats.
+FORECAST_WINDOW = 10
+FORECAST_HORIZON = 5
+
 # Inter-patient split (de Chazal DS1/DS2). No record appears in both splits, and
 # both contain S and V beats so macro-F1 is well-defined over all three classes.
 TRAIN_RECORDS = ["101", "106", "108", "109", "112", "114", "115", "116", "118",

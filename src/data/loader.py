@@ -50,8 +50,8 @@ def _load_record(record: str):
     return signal, list(ann.sample), list(ann.symbol)
 
 
-def balance_classes(X: np.ndarray, y: np.ndarray, per_class: int, seed: int = 0):
-    """Cap each class to at most ``per_class`` samples (random undersampling)."""
+def balanced_indices(y: np.ndarray, per_class: int, seed: int = 0) -> np.ndarray:
+    """Return shuffled indices capping each class to at most ``per_class`` samples."""
     rng = np.random.default_rng(seed)
     chosen = []
     for c in range(len(config.CLASSES)):
@@ -61,7 +61,53 @@ def balance_classes(X: np.ndarray, y: np.ndarray, per_class: int, seed: int = 0)
         chosen.append(ci)
     idx = np.concatenate(chosen) if chosen else np.array([], dtype=int)
     rng.shuffle(idx)
+    return idx
+
+
+def balance_classes(X: np.ndarray, y: np.ndarray, per_class: int, seed: int = 0):
+    """Cap each class to at most ``per_class`` samples (random undersampling)."""
+    idx = balanced_indices(y, per_class, seed)
     return X[idx], y[idx]
+
+
+def _rr_window(rr: np.ndarray, j: int, k: int) -> np.ndarray:
+    """Last ``k`` RR intervals ending at beat ``j`` (left-padded with rr[0] at start)."""
+    lo = j - k + 1
+    if lo < 0:
+        return np.concatenate([np.full(-lo, rr[0], dtype=np.float32), rr[: j + 1]])
+    return rr[lo : j + 1]
+
+
+def _rr_series(rpeaks: np.ndarray) -> np.ndarray:
+    """RR interval (seconds) per annotated beat; beat 0 mirrors beat 1; nan->median."""
+    rr = np.full(len(rpeaks), np.nan, dtype=np.float32)
+    if len(rpeaks) > 1:
+        rr[1:] = np.diff(rpeaks) / config.SAMPLE_RATE
+        rr[0] = rr[1]
+    med = float(np.nanmedian(rr)) if np.isfinite(rr).any() else 0.8
+    return np.where(np.isfinite(rr), rr, med).astype(np.float32)
+
+
+def load_split_multimodal(records, k: int = config.RR_CONTEXT):
+    """Per-beat ECG window + RR-trend context. Returns (ecg N×WINDOW, rr N×k, y N)."""
+    Xs, Rs, ys = [], [], []
+    for record in records:
+        signal, rpeaks, symbols = _load_record(record)
+        rpeaks = np.asarray(rpeaks)
+        rr = _rr_series(rpeaks)
+        for j, (r, sym) in enumerate(zip(rpeaks, symbols)):
+            cls = map_symbol(sym)
+            if cls is None:
+                continue
+            start, end = r - config.PRE_SAMPLES, r + config.POST_SAMPLES
+            if start < 0 or end > len(signal):
+                continue
+            Xs.append(signal[start:end])
+            Rs.append(_rr_window(rr, j, k))
+            ys.append(cls)
+    return (np.asarray(Xs, dtype=np.float32),
+            np.asarray(Rs, dtype=np.float32),
+            np.asarray(ys, dtype=np.int64))
 
 
 def load_split(records, max_beats_per_record: int | None = None):
