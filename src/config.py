@@ -1,4 +1,13 @@
 """Project-wide constants."""
+import os
+
+from dotenv import load_dotenv
+
+# Load API keys / settings from a .env file at the repo root (if present), so
+# OPENAI_API_KEY / ANTHROPIC_API_KEY / LLM_PROVIDER don't need re-exporting each
+# session. Real environment variables still take precedence over .env values.
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+load_dotenv(os.path.join(_REPO_ROOT, ".env"))
 
 # Beat window: samples around the R-peak (MIT-BIH is 360 Hz). ~0.5s before, ~0.7s after.
 PRE_SAMPLES = 180
